@@ -15,6 +15,8 @@ import { CandidateEditModal } from "./candidate-edit-modal"
 import { DeleteConfirmationModal } from "./delete-confirmation-modal"
 import { BulkActionBar } from "./bulk-action-bar"
 import { getSignedResumeUrl } from "@/lib/storage"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+import { useRouter } from "next/navigation"
 
 // Update the Candidate interface to include all AI-parsed data fields
 export interface Candidate {
@@ -60,10 +62,12 @@ export default function CandidatesPage() {
   // Filter states
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedJob, setSelectedJob] = useState<string | null>(null)
-  const [selectedMatchScore, setSelectedMatchScore] = useState<string | null>("90") // Default to 90%
+  const [selectedMatchScore, setSelectedMatchScore] = useState<string | null>(null) // Changed to null for "Any score"
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
 
-  // Update the fetchData function to include all AI-parsed data
+  const router = useRouter()
+
+  // Update the fetchData function to sort by match score
   const fetchData = async () => {
     if (!user) return
 
@@ -84,13 +88,14 @@ export default function CandidatesPage() {
       const { data: candidatesData, error: candidatesError } = await supabase
         .from("candidates")
         .select(`
-        *,
-        job:job_id (
-          id,
-          title
-        )
-      `)
+          *,
+          job:job_id (
+            id,
+            title
+          )
+        `)
         .eq("user_id", user.id)
+        .order("match_score", { ascending: false }) // Sort by match score descending
         .order("created_at", { ascending: false })
 
       if (candidatesError) throw candidatesError
@@ -99,7 +104,6 @@ export default function CandidatesPage() {
       const formattedCandidates = candidatesData.map((candidate) => ({
         ...candidate,
         job: candidate.job,
-        // Ensure these fields are properly typed
         skills: candidate.skills || [],
         experience: candidate.experience || [],
         education: candidate.education || [],
@@ -125,18 +129,16 @@ export default function CandidatesPage() {
     fetchData()
   }, [user])
 
-  // Apply filters whenever filter states change
-  useEffect(() => {
-    if (candidates.length === 0) return
-
+  // Update the filter function to handle match score filtering
+  const applyFilters = () => {
     let filtered = [...candidates]
 
     // Apply search filter
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
         (candidate) =>
-          candidate.first_name?.toLowerCase().includes(query) || candidate.email?.toLowerCase().includes(query),
+          candidate.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          candidate.email.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     }
 
@@ -147,8 +149,8 @@ export default function CandidatesPage() {
 
     // Apply match score filter
     if (selectedMatchScore) {
-      const scoreThreshold = Number.parseInt(selectedMatchScore)
-      filtered = filtered.filter((candidate) => candidate.match_score >= scoreThreshold)
+      const score = parseInt(selectedMatchScore)
+      filtered = filtered.filter((candidate) => candidate.match_score >= score)
     }
 
     // Apply status filter
@@ -157,10 +159,19 @@ export default function CandidatesPage() {
     }
 
     setFilteredCandidates(filtered)
-  }, [candidates, searchQuery, selectedJob, selectedMatchScore, selectedStatus])
+  }
+
+  // Update the match score filter options
+  const matchScoreOptions = [
+    { value: null, label: "Any score" },
+    { value: "90", label: "90% or higher" },
+    { value: "80", label: "80% or higher" },
+    { value: "70", label: "70% or higher" },
+    { value: "60", label: "60% or higher" },
+  ]
 
   const handleViewCandidate = (candidate: Candidate) => {
-    setViewCandidate(candidate)
+    router.push(`/candidates/${candidate.id}`)
   }
 
   const handleEditCandidate = (candidate: Candidate) => {
@@ -427,18 +438,6 @@ export default function CandidatesPage() {
       />
 
       {/* Modals */}
-      {viewCandidate && (
-        <CandidateViewModal
-          candidate={viewCandidate}
-          open={!!viewCandidate}
-          onClose={() => setViewCandidate(null)}
-          onEdit={() => {
-            setEditCandidate(viewCandidate)
-            setViewCandidate(null)
-          }}
-        />
-      )}
-
       {editCandidate && (
         <CandidateEditModal
           candidate={editCandidate}
@@ -463,6 +462,19 @@ export default function CandidatesPage() {
         title="Delete Multiple Candidates"
         description={`Are you sure you want to delete ${selectedCandidates.length} candidates? This action cannot be undone.`}
       />
+
+      <Select value={selectedMatchScore || ""} onValueChange={(value) => setSelectedMatchScore(value || null)}>
+        <SelectTrigger className="w-[180px]">
+          <SelectValue placeholder="Match score" />
+        </SelectTrigger>
+        <SelectContent>
+          {matchScoreOptions.map((option) => (
+            <SelectItem key={option.value || "any"} value={option.value || ""}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

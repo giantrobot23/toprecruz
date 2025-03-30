@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { supabase } from "@/lib/supabase"
 import { uploadResume } from "@/lib/storage"
 import { checkResourceLimit, incrementUsageCounter } from "@/lib/plan-limits"
+import { parseResume } from "@/lib/ai"
 
 interface ResumeFile {
   id: string
@@ -233,88 +234,48 @@ export default function ResumeUploadClient() {
 
   const handleResumeProcessing = async (fileObj: ResumeFile & { file: File }) => {
     try {
-      // 1. Upload file to Supabase Storage using our secure function
-      const {
-        path: filePath,
-        url: resumeUrl,
-        error: uploadError,
-      } = await uploadResume(
-        fileObj.file,
-        user!.id,
-        fileObj.name.split(".")[0], // Use filename as candidate name
-      )
+      // 1. Upload file to storage
+      const { path: filePath, error: uploadError } = await uploadResume(fileObj.file, user.id, fileObj.name.split(".")[0])
 
       if (uploadError) {
         throw new Error(`Upload error: ${uploadError.message}`)
       }
 
-      // 2. Read file content for parsing
-      let resumeText = ""
+      // 2. Get job description
+      const { data: jobData, error: jobError } = await supabase
+        .from("jobs")
+        .select("description")
+        .eq("id", selectedJob)
+        .single()
 
-      if (fileObj.file.type === "text/plain") {
-        resumeText = await fileObj.file.text()
-      } else {
-        // For PDF/DOCX, we'd normally use a server-side function to extract text
-        // For this demo, we'll simulate with a placeholder
-        resumeText = `Resume for ${fileObj.name.split(".")[0]}
-
-        Skills: JavaScript, React, TypeScript, Node.js
-
-        Experience: 5 years of frontend development
-
-        Education: Bachelor's in Computer Science`
+      if (jobError) {
+        throw new Error(`Job fetch error: ${jobError.message}`)
       }
 
-      // 3. Parse resume with OpenAI via API route
-      const parseResponse = await fetch("/api/ai/parse-resume", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ resumeText }),
-      })
+      // 3. Read file content
+      const fileContent = await fileObj.file.text()
 
-      if (!parseResponse.ok) {
-        throw new Error("Failed to parse resume")
-      }
-
-      const parsedData = await parseResponse.json()
-
-      // 4. Calculate match score with job requirements via API route
-      let matchResult = { matchScore: 0, matchedSkills: [], missingSkills: [] }
-
-      if (parsedData.skills && parsedData.skills.length > 0 && jobRequirements) {
-        const matchResponse = await fetch("/api/ai/calculate-match", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            candidateSkills: parsedData.skills,
-            jobRequirements,
-          }),
-        })
-
-        if (!matchResponse.ok) {
-          throw new Error("Failed to calculate match score")
-        }
-
-        matchResult = await matchResponse.json()
-      }
+      // 4. Parse resume and get match analysis
+      const { parsedData, matchResult } = await parseResume(fileContent, jobData.description)
 
       // 5. Save candidate to database
-      const { data: candidateData, error: candidateError } = await supabase.from("candidates").insert({
-        name: parsedData.name || fileObj.name.split(".")[0],
-        email: parsedData.email || "unknown@example.com",
-        phone: parsedData.phone || null,
+      const { error: candidateError } = await supabase.from("candidates").insert({
+        name: parsedData.name,
+        email: parsedData.email,
+        phone: parsedData.phone,
         job_id: selectedJob,
         match_score: matchResult.matchScore,
         status: "New",
-        skills: parsedData.skills || [],
+        skills: parsedData.skills,
+        experience: parsedData.experience,
+        education: parsedData.education,
+        matched_skills: matchResult.matchedSkills,
+        missing_skills: matchResult.missingSkills,
+        analysis: matchResult.analysis,
         resume_url: filePath,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        user_id: user!.id,
+        user_id: user.id,
       })
 
       if (candidateError) {
@@ -339,11 +300,6 @@ export default function ResumeUploadClient() {
             : f,
         ),
       )
-
-      // 7. Increment the resume upload counter after successful processing
-      if (user) {
-        await incrementUsageCounter(user.id, "resume_uploads")
-      }
     } catch (error) {
       console.error("Resume processing error:", error)
 
