@@ -1,42 +1,48 @@
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 export async function middleware(req: NextRequest) {
-  // Simple redirect logic without Supabase client
-  // This avoids potential issues with the Supabase client in middleware
-  const url = req.nextUrl.clone()
+  const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req, res })
 
-  // Check if the path is a protected route
-  const isProtectedRoute =
-    url.pathname.startsWith("/dashboard") ||
-    url.pathname.startsWith("/jobs") ||
-    url.pathname.startsWith("/candidates") ||
-    url.pathname.startsWith("/resume-upload") ||
-    url.pathname.startsWith("/settings")
+  // Refresh session if expired
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  // Check if the path is an auth page
-  const isAuthPage = url.pathname === "/login" || url.pathname === "/signup"
+  // Define protected routes
+  const protectedRoutes = ["/dashboard", "/jobs", "/candidates", "/resume-upload"]
+  const isProtectedRoute = protectedRoutes.some((route) => req.nextUrl.pathname.startsWith(route))
 
-  // For simplicity, we'll just redirect unauthenticated users to login
-  // The actual auth check will happen client-side
-  if (isProtectedRoute) {
-    // We'll let the client-side ProtectedRoute component handle the auth check
-    return NextResponse.next()
+  // Define auth routes (login/signup)
+  const authRoutes = ["/login", "/signup"]
+  const isAuthRoute = authRoutes.some((route) => req.nextUrl.pathname.startsWith(route))
+
+  // Redirect logic
+  if (isProtectedRoute && !session) {
+    // Redirect to login if trying to access protected route without session
+    return NextResponse.redirect(new URL("/login", req.url))
   }
 
-  return NextResponse.next()
+  if (isAuthRoute && session) {
+    // Redirect to dashboard if trying to access auth routes with active session
+    return NextResponse.redirect(new URL("/dashboard", req.url))
+  }
+
+  return res
 }
 
-// Specify which routes this middleware should run on
 export const config = {
   matcher: [
-    "/dashboard/:path*",
-    "/jobs/:path*",
-    "/candidates/:path*",
-    "/resume-upload/:path*",
-    "/settings/:path*",
-    "/login",
-    "/signup",
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    "/((?!_next/static|_next/image|favicon.ico|public).*)",
   ],
 }
 

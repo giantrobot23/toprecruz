@@ -112,7 +112,7 @@ export function CandidateTable({
                     <Checkbox
                       checked={selectedCandidates.includes(candidate.id)}
                       onCheckedChange={() => toggleSelectCandidate(candidate.id)}
-                      aria-label={`Select ${candidate.name}`}
+                      aria-label={`Select ${candidate.first_name} ${candidate.last_name}`}
                     />
                   </td>
                   <td className="p-4 align-middle font-medium">

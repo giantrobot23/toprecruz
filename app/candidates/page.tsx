@@ -84,8 +84,8 @@ export default function CandidatesPage() {
       if (jobsError) throw jobsError
       setJobs(jobsData || [])
 
-      // Fetch candidates with job information and all AI-parsed data
-      const { data: candidatesData, error: candidatesError } = await supabase
+      // Build the query
+      let query = supabase
         .from("candidates")
         .select(`
           *,
@@ -95,13 +95,32 @@ export default function CandidatesPage() {
           )
         `)
         .eq("user_id", user.id)
-        .order("match_score", { ascending: false }) // Sort by match score descending
-        .order("created_at", { ascending: false })
+
+      // Apply filters in the query if they exist
+      if (selectedJob) {
+        query = query.eq("job_id", selectedJob)
+      }
+
+      if (selectedMatchScore) {
+        const score = parseInt(selectedMatchScore)
+        query = query.gte("match_score", score)
+      }
+
+      if (selectedStatus) {
+        query = query.eq("status", selectedStatus)
+      }
+
+      // Add sorting
+      query = query.order("match_score", { ascending: false })
+                  .order("created_at", { ascending: false })
+
+      // Execute the query
+      const { data: candidatesData, error: candidatesError } = await query
 
       if (candidatesError) throw candidatesError
 
       // Transform the data to match our interface
-      const formattedCandidates = candidatesData.map((candidate) => ({
+      const formattedCandidates = (candidatesData || []).map((candidate) => ({
         ...candidate,
         job: candidate.job,
         skills: candidate.skills || [],
@@ -125,41 +144,32 @@ export default function CandidatesPage() {
     }
   }
 
+  // Update useEffect to include filter dependencies
   useEffect(() => {
     fetchData()
-  }, [user])
+  }, [user, selectedJob, selectedMatchScore, selectedStatus])
 
-  // Update the filter function to handle match score filtering
+  // Update the filter function to only handle search
   const applyFilters = () => {
     let filtered = [...candidates]
 
-    // Apply search filter
+    // Only apply search filter client-side
     if (searchQuery) {
       filtered = filtered.filter(
         (candidate) =>
-          candidate.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          candidate.email.toLowerCase().includes(searchQuery.toLowerCase()),
+          (candidate.first_name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+          (candidate.last_name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+          (candidate.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()),
       )
-    }
-
-    // Apply job filter
-    if (selectedJob) {
-      filtered = filtered.filter((candidate) => candidate.job_id === selectedJob)
-    }
-
-    // Apply match score filter
-    if (selectedMatchScore) {
-      const score = parseInt(selectedMatchScore)
-      filtered = filtered.filter((candidate) => candidate.match_score >= score)
-    }
-
-    // Apply status filter
-    if (selectedStatus) {
-      filtered = filtered.filter((candidate) => candidate.status === selectedStatus)
     }
 
     setFilteredCandidates(filtered)
   }
+
+  // Update effect for search filter only
+  useEffect(() => {
+    applyFilters()
+  }, [searchQuery, candidates])
 
   // Update the match score filter options
   const matchScoreOptions = [
@@ -462,19 +472,6 @@ export default function CandidatesPage() {
         title="Delete Multiple Candidates"
         description={`Are you sure you want to delete ${selectedCandidates.length} candidates? This action cannot be undone.`}
       />
-
-      <Select value={selectedMatchScore || ""} onValueChange={(value) => setSelectedMatchScore(value || null)}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Match score" />
-        </SelectTrigger>
-        <SelectContent>
-          {matchScoreOptions.map((option) => (
-            <SelectItem key={option.value || "any"} value={option.value || ""}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   )
 }

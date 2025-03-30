@@ -31,12 +31,11 @@ export function CandidateFilters({
   const clearFilters = () => {
     setSearchQuery("")
     setSelectedJob(null)
-    setSelectedMatchScore("90") // Reset to default 90%
+    setSelectedMatchScore(null) // Reset to "Any Score"
     setSelectedStatus(null)
   }
 
-  const hasActiveFilters =
-    searchQuery || selectedJob || selectedStatus || (selectedMatchScore && selectedMatchScore !== "90")
+  const hasActiveFilters = searchQuery || selectedJob || selectedMatchScore || selectedStatus
 
   return (
     <CardContent className="p-4 space-y-4">
@@ -90,9 +89,10 @@ export function CandidateFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="any">Any Score</SelectItem>
-              <SelectItem value="90">90%+</SelectItem>
-              <SelectItem value="80">80%+</SelectItem>
-              <SelectItem value="70">70%+</SelectItem>
+              <SelectItem value="90">90% or higher</SelectItem>
+              <SelectItem value="80">80% or higher</SelectItem>
+              <SelectItem value="70">70% or higher</SelectItem>
+              <SelectItem value="60">60% or higher</SelectItem>
             </SelectContent>
           </Select>
         </div>
