@@ -73,10 +73,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true)
       setError(null)
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      })
 
       if (signInError) {
         throw signInError
+      }
+
+      // Update the session and user state immediately
+      if (data.session) {
+        setSession(data.session)
+        setUser(data.session.user)
+        router.push("/dashboard")
       }
     } catch (error) {
       console.error("Error signing in:", error)

@@ -8,6 +8,35 @@ import { BarChart3, Briefcase, Calendar, CheckCircle, Plus, ThumbsUp, Upload, Us
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/contexts/auth-context"
 import { PlanUsageIndicator } from "@/components/plan-usage-indicator"
+import type { Database } from "@/types/supabase"
+
+type Candidate = Database["public"]["Tables"]["candidates"]["Row"] & {
+  jobs: Database["public"]["Tables"]["jobs"]["Row"] | null
+}
+
+type Job = Database["public"]["Tables"]["jobs"]["Row"]
+
+type ActivityCandidate = {
+  id: string
+  first_name: string
+  last_name: string
+  status: string
+  created_at: string
+  jobs: {
+    id: string
+    title: string
+    department: string | null
+    status: string
+  } | null
+}
+
+type ActivityJob = {
+  id: string
+  title: string
+  department: string | null
+  status: string
+  created_at: string
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -88,10 +117,20 @@ export default function DashboardPage() {
           .from("candidates")
           .select(`
             id,
-            name,
+            first_name,
+            last_name,
+            email,
+            phone,
+            job_id,
+            match_score,
             status,
             created_at,
-            jobs:job_id (title)
+            jobs:job_id (
+              id,
+              title,
+              department,
+              status
+            )
           `)
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
@@ -101,7 +140,13 @@ export default function DashboardPage() {
 
         const { data: recentJobs, error: recentJobsError } = await supabase
           .from("jobs")
-          .select("id, title, status, created_at")
+          .select(`
+            id,
+            title,
+            department,
+            status,
+            created_at
+          `)
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(5)
@@ -110,20 +155,15 @@ export default function DashboardPage() {
 
         // Combine and sort recent activity
         const combinedActivity = [
-          ...(recentCandidates || []).map((candidate: { 
-            name: string; 
-            jobs?: { title: string }; 
-            created_at: string;
-            status: string;
-          }) => ({
-            type: "candidate",
+          ...((recentCandidates || []) as ActivityCandidate[]).map((candidate) => ({
+            type: "candidate" as const,
             title: `New candidate applied`,
-            description: `${candidate.name} • ${candidate.jobs?.title || "Unknown Position"}`,
+            description: `${candidate.first_name} ${candidate.last_name} • ${candidate.jobs?.title || "Unknown Position"}`,
             date: candidate.created_at,
             status: candidate.status,
           })),
-          ...(recentJobs || []).map((job) => ({
-            type: "job",
+          ...((recentJobs || []) as ActivityJob[]).map((job) => ({
+            type: "job" as const,
             title: `Job posting created`,
             description: `${job.title} • ${job.status}`,
             date: job.created_at,
