@@ -14,7 +14,42 @@ interface FormData {
   password: string
 }
 
+// Error boundary component
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [hasError, setHasError] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  useEffect(() => {
+    if (hasError) {
+      console.error('Login page error:', error)
+    }
+  }, [hasError, error])
+
+  if (hasError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center space-y-4">
+          <h2 className="text-xl font-semibold text-red-600">Something went wrong</h2>
+          <p className="text-sm text-gray-600">Please try refreshing the page</p>
+          <Button onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  try {
+    return <>{children}</>
+  } catch (e) {
+    setError(e instanceof Error ? e : new Error('Unknown error'))
+    setHasError(true)
+    return null
+  }
+}
+
 function LoginForm() {
+  console.log('LoginForm rendering') // Debug log
   const router = useRouter()
   const searchParams = useSearchParams()
   const { signIn, user, isLoading: authLoading } = useAuth()
@@ -26,10 +61,24 @@ function LoginForm() {
   })
 
   useEffect(() => {
+    // Debug logs
+    console.log('LoginForm useEffect', {
+      user,
+      authLoading,
+      searchParams: searchParams?.toString()
+    })
+
     // If user is already logged in, redirect them
     if (user && !authLoading) {
-      const redirectTo = searchParams.get('redirect') || '/dashboard'
-      router.push(redirectTo)
+      try {
+        const redirectTo = searchParams?.get('redirect')
+        const decodedRedirect = redirectTo ? decodeURIComponent(redirectTo) : '/dashboard'
+        console.log('Redirecting to:', decodedRedirect) // Debug log
+        router.push(decodedRedirect)
+      } catch (e) {
+        console.error('Redirect error:', e)
+        router.push('/dashboard') // Fallback to dashboard if redirect fails
+      }
     }
   }, [user, authLoading, router, searchParams])
 
@@ -39,6 +88,7 @@ function LoginForm() {
     setIsLoading(true)
 
     try {
+      console.log('Attempting sign in') // Debug log
       await signIn(formData.email, formData.password)
       toast.success('Signed in successfully')
       // Redirect will be handled by useEffect when user state updates
@@ -60,7 +110,11 @@ function LoginForm() {
   }
 
   if (user) {
-    return null // Will be redirected by useEffect
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -122,15 +176,17 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      }
-    >
-      <LoginForm />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        }
+      >
+        <LoginForm />
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 
