@@ -19,57 +19,72 @@ export default function DashboardPage() {
     topMatches: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [recentActivity, setRecentActivity] = useState<any[]>([])
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!user) return
+      if (!user) {
+        setLoading(false)
+        return
+      }
 
       try {
         setLoading(true)
+        setError(null)
 
         // Fetch total candidates
-        const { count: totalCandidates } = await supabase
+        const { count: totalCandidates, error: candidatesError } = await supabase
           .from("candidates")
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
 
+        if (candidatesError) throw new Error(candidatesError.message)
+
         // Fetch hired this month
         const currentDate = new Date()
         const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString()
-        const { count: hiredThisMonth } = await supabase
+        const { count: hiredThisMonth, error: hiredError } = await supabase
           .from("candidates")
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
           .eq("status", "Hired")
           .gte("updated_at", firstDayOfMonth)
 
+        if (hiredError) throw new Error(hiredError.message)
+
         // Fetch open jobs
-        const { count: openJobs } = await supabase
+        const { count: openJobs, error: jobsError } = await supabase
           .from("jobs")
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
           .eq("status", "Open")
 
+        if (jobsError) throw new Error(jobsError.message)
+
         // Fetch pending reviews
-        const { count: pendingReviews } = await supabase
+        const { count: pendingReviews, error: reviewsError } = await supabase
           .from("candidates")
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
           .in("status", ["New", "Reviewed"])
 
+        if (reviewsError) throw new Error(reviewsError.message)
+
         // Fetch top matches this week
         const oneWeekAgo = new Date()
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-        const { count: topMatches } = await supabase
+        const { count: topMatches, error: matchesError } = await supabase
           .from("candidates")
           .select("*", { count: "exact", head: true })
           .eq("user_id", user.id)
           .gte("match_score", 90)
           .gte("created_at", oneWeekAgo.toISOString())
 
+        if (matchesError) throw new Error(matchesError.message)
+
         // Fetch recent activity
-        const { data: recentCandidates } = await supabase
+        const { data: recentCandidates, error: recentCandidatesError } = await supabase
           .from("candidates")
           .select(`
             id,
@@ -82,16 +97,25 @@ export default function DashboardPage() {
           .order("created_at", { ascending: false })
           .limit(5)
 
-        const { data: recentJobs } = await supabase
+        if (recentCandidatesError) throw new Error(recentCandidatesError.message)
+
+        const { data: recentJobs, error: recentJobsError } = await supabase
           .from("jobs")
           .select("id, title, status, created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(5)
 
+        if (recentJobsError) throw new Error(recentJobsError.message)
+
         // Combine and sort recent activity
         const combinedActivity = [
-          ...(recentCandidates || []).map((candidate) => ({
+          ...(recentCandidates || []).map((candidate: { 
+            name: string; 
+            jobs?: { title: string }; 
+            created_at: string;
+            status: string;
+          }) => ({
             type: "candidate",
             title: `New candidate applied`,
             description: `${candidate.name} • ${candidate.jobs?.title || "Unknown Position"}`,
@@ -119,6 +143,7 @@ export default function DashboardPage() {
         })
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
+        setError(error instanceof Error ? error.message : "Failed to load dashboard data")
       } finally {
         setLoading(false)
       }
@@ -126,6 +151,46 @@ export default function DashboardPage() {
 
     fetchDashboardData()
   }, [user])
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="container px-4 md:px-6 py-8">
+        <div className="mb-8">
+          <div className="h-8 w-48 bg-gray-200 rounded animate-pulse mb-2"></div>
+          <div className="h-4 w-96 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-5 w-5 bg-gray-200 rounded animate-pulse"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mb-2"></div>
+                <div className="h-3 w-32 bg-gray-200 rounded animate-pulse"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="container px-4 md:px-6 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <div className="text-red-500 mb-4">Error: {error}</div>
+          <Button onClick={() => window.location.reload()} variant="outline">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   // Function to animate numbers
   const AnimatedNumber = ({ value }: { value: number }) => {
