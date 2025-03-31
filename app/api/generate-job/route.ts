@@ -7,10 +7,7 @@ const openai = new OpenAI({
 })
 
 export interface GeneratedJobContent {
-  description: string
-  responsibilities: string
-  requirements: string
-  benefits: string
+  content: string
 }
 
 export async function POST(request: Request) {
@@ -25,17 +22,19 @@ export async function POST(request: Request) {
       Create a professional LinkedIn-style job posting for a "${jobTitle}" position.
       ${context ? `Additional context: ${context}` : ""}
       
-      Format the response as a JSON object with the following fields:
-      - description: A detailed overview of the role (2-3 paragraphs)
-      - responsibilities: A bullet-point list of key responsibilities (5-7 items)
-      - requirements: A bullet-point list of required skills and qualifications (5-7 items)
-      - benefits: A bullet-point list of benefits and perks (4-5 items)
+      Write a complete, well-formatted job posting that includes:
+      - A compelling overview of the role and company
+      - Key responsibilities
+      - Required qualifications and skills
+      - Benefits and perks
       
-      Each bullet point should start with a • character.
+      Format the response as a JSON object with a single "content" field containing the complete job posting.
+      Use proper spacing and bullet points (•) for lists.
+      Keep the tone professional but engaging.
     `
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
@@ -55,10 +54,7 @@ export async function POST(request: Request) {
       console.error("Failed to parse OpenAI response as JSON:", error)
       // Fallback with empty structure
       return NextResponse.json({
-        description: "Failed to generate description.",
-        responsibilities: "Failed to generate responsibilities.",
-        requirements: "Failed to generate requirements.",
-        benefits: "Failed to generate benefits.",
+        content: "Failed to generate job posting. Please try again.",
       })
     }
   } catch (error) {

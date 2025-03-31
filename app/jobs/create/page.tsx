@@ -36,12 +36,6 @@ export default function CreateJobPage() {
   const [roleDescription, setRoleDescription] = useState("")
   const [regenerationCount, setRegenerationCount] = useState(0)
   const [MAX_REGENERATIONS] = useState(3)
-  const [generatedContent, setGeneratedContent] = useState<{
-    description: string
-    responsibilities: string
-    requirements: string
-    benefits: string
-  } | null>(null)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -80,16 +74,12 @@ export default function CreateJobPage() {
         throw new Error("Failed to generate job description")
       }
 
-      const generatedContent = await response.json()
-      setGeneratedContent(generatedContent)
-
+      const { content } = await response.json()
+      
       // Update form data with generated content
       setFormData((prev) => ({
         ...prev,
-        description: generatedContent.description,
-        responsibilities: generatedContent.responsibilities,
-        requirements: generatedContent.requirements,
-        benefits: generatedContent.benefits,
+        description: content,
       }))
 
       toast({
@@ -108,45 +98,26 @@ export default function CreateJobPage() {
     }
   }
 
-  const handleRegenerate = async () => {
-    if (regenerationCount >= MAX_REGENERATIONS - 1) {
+  const handleRegenerate = () => {
+    if (regenerationCount >= MAX_REGENERATIONS) {
       toast({
         title: "Regeneration limit reached",
-        description: "You've reached the limit of 3 regenerations per job. Please edit manually or continue with the current generation.",
+        description: "You've reached the maximum number of regenerations.",
         variant: "destructive",
       })
       return
     }
 
     setRegenerationCount((prev) => prev + 1)
-    await handleGenerateDescription()
+    handleGenerateDescription()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!user) {
-      toast({
-        title: "Authentication required",
-        description: "You must be signed in to create a job.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!formData.title || !formData.requirements) {
-      toast({
-        title: "Required fields missing",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      })
-      return
-    }
-
     setIsLoading(true)
 
     try {
-      const { data, error } = await supabase.from("jobs").insert({
+      const { error } = await supabase.from("jobs").insert({
         title: formData.title,
         department: formData.department || null,
         location: formData.location || null,
@@ -160,24 +131,22 @@ export default function CreateJobPage() {
         status: "Open",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        user_id: user.id,
+        user_id: user!.id,
       })
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       toast({
         title: "Job created",
-        description: "Your job has been created successfully.",
+        description: "Your job posting has been created successfully.",
       })
 
       router.push("/jobs")
     } catch (error) {
       console.error("Error creating job:", error)
       toast({
-        title: "Creation failed",
-        description: "Failed to create job. Please try again.",
+        title: "Error",
+        description: "Failed to create job posting. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -273,7 +242,7 @@ export default function CreateJobPage() {
           </p>
         </div>
 
-        <div className="grid gap-6">
+        <form onSubmit={handleSubmit} className="grid gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Job Information</CardTitle>
@@ -295,12 +264,12 @@ export default function CreateJobPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="roleDescription">Role Description</Label>
+                <Label htmlFor="roleDescription">Additional Context (Optional)</Label>
                 <Textarea
                   id="roleDescription"
                   value={roleDescription}
                   onChange={(e) => setRoleDescription(e.target.value)}
-                  placeholder="Describe the role briefly, including skills needed, experience level, and requirements."
+                  placeholder="Add any specific requirements, technologies, or context about the role..."
                   className="min-h-[100px]"
                 />
               </div>
@@ -317,7 +286,7 @@ export default function CreateJobPage() {
             </CardContent>
           </Card>
 
-          {generatedContent && (
+          {formData.description && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -328,7 +297,7 @@ export default function CreateJobPage() {
                   variant="outline"
                   size="sm"
                   onClick={handleRegenerate}
-                  disabled={regenerationCount >= MAX_REGENERATIONS - 1 || isGenerating}
+                  disabled={regenerationCount >= MAX_REGENERATIONS || isGenerating}
                   className="flex items-center gap-1"
                 >
                   <RefreshCw className="h-4 w-4" />
@@ -336,7 +305,7 @@ export default function CreateJobPage() {
                   {regenerationCount > 0 && <span className="text-xs">({MAX_REGENERATIONS - regenerationCount} left)</span>}
                 </Button>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent>
                 <div className="space-y-2">
                   <Label htmlFor="description">Job Description</Label>
                   <Textarea
@@ -344,61 +313,26 @@ export default function CreateJobPage() {
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
-                    className="min-h-[100px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="responsibilities">Responsibilities</Label>
-                  <Textarea
-                    id="responsibilities"
-                    name="responsibilities"
-                    value={formData.responsibilities}
-                    onChange={handleChange}
-                    className="min-h-[100px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="requirements">Requirements</Label>
-                  <Textarea
-                    id="requirements"
-                    name="requirements"
-                    value={formData.requirements}
-                    onChange={handleChange}
-                    className="min-h-[100px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="benefits">Benefits</Label>
-                  <Textarea
-                    id="benefits"
-                    name="benefits"
-                    value={formData.benefits}
-                    onChange={handleChange}
-                    className="min-h-[100px]"
+                    className="min-h-[400px] font-mono"
                   />
                 </div>
               </CardContent>
               <CardFooter className="flex justify-end gap-4">
-                <Button type="button" variant="outline" onClick={() => router.push("/jobs")}>
+                <Button variant="outline" onClick={() => setCreationMethod("choose")}>
                   Cancel
                 </Button>
-                <Button
-                  type="button"
-                  className="bg-[#A23FC6] hover:bg-[#B56FD1] text-white"
-                  disabled={isLoading}
-                  onClick={handleSubmit}
-                >
+                <Button type="submit" className="bg-[#A23FC6] hover:bg-[#B56FD1] text-white" disabled={isLoading}>
                   {isLoading ? "Creating..." : "Create Job"}
                 </Button>
               </CardFooter>
             </Card>
           )}
-        </div>
+        </form>
       </div>
     )
   }
 
-  // Render the manual creation form (existing code)
+  // Render the manual creation form
   return (
     <div className="container px-4 md:px-6 py-8">
       <div className="mb-8">
@@ -557,7 +491,7 @@ export default function CreateJobPage() {
         </div>
 
         <div className="mt-6 flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => router.push("/jobs")}>
+          <Button type="button" variant="outline" onClick={() => setCreationMethod("choose")}>
             Cancel
           </Button>
           <Button type="submit" className="bg-[#A23FC6] hover:bg-[#B56FD1] text-white" disabled={isLoading}>

@@ -292,23 +292,64 @@ export default function ResumeUploadClient() {
         lastName = nameParts.slice(1).join(" ")
       }
 
-      const { data: candidateData, error: candidateError } = await supabase
+      const email = parsedData.email || `${candidateName.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@example.com`
+
+      // Check if candidate already exists
+      const { data: existingCandidate, error: searchError } = await supabase
         .from("candidates")
-        .insert({
-          first_name: firstName,
-          last_name: lastName, // Add last_name field
-          email: parsedData.email || `${candidateName.toLowerCase().replace(/\s+/g, ".")}@example.com`,
-          phone: parsedData.phone || null,
-          job_id: selectedJob,
-          match_score: matchResult.matchScore,
-          status: "New",
-          skills: parsedData.skills || [],
-          resume_url: filePath, // Store the path, not the full URL
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          user_id: user!.id,
-        })
-        .select()
+        .select("id")
+        .eq("email", email)
+        .single()
+
+      if (searchError && searchError.code !== "PGRST116") { // PGRST116 is "not found" error
+        throw new Error(`Database search error: ${searchError.message}`)
+      }
+
+      let candidateData
+      let candidateError
+
+      if (existingCandidate) {
+        // Update existing candidate
+        const { data, error } = await supabase
+          .from("candidates")
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            phone: parsedData.phone || null,
+            job_id: selectedJob,
+            match_score: matchResult.matchScore,
+            skills: parsedData.skills || [],
+            resume_url: filePath,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingCandidate.id)
+          .select()
+
+        candidateData = data
+        candidateError = error
+      } else {
+        // Insert new candidate
+        const { data, error } = await supabase
+          .from("candidates")
+          .insert({
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            phone: parsedData.phone || null,
+            job_id: selectedJob,
+            match_score: matchResult.matchScore,
+            status: "New",
+            skills: parsedData.skills || [],
+            resume_url: filePath,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            user_id: user!.id,
+          })
+          .select()
+
+        candidateData = data
+        candidateError = error
+      }
 
       if (candidateError) {
         throw new Error(`Database error: ${candidateError.message}`)
